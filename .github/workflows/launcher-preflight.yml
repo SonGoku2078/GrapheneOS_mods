@@ -1,0 +1,62 @@
+name: Launcher preflight
+
+on:
+  push:
+    branches: [graphene-launcher-plus]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SYSTEM_IMAGE: system-images;android-36;google_apis;x86_64
+      AVD_NAME: launcher-plus-ci
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check patch against GrapheneOS Launcher3
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 17 \
+            https://github.com/GrapheneOS/platform_packages_apps_Launcher3.git upstream
+          git -C upstream rev-parse HEAD
+          git -C upstream apply --check "$GITHUB_WORKSPACE/black-labels.patch"
+
+      - name: Boot Android emulator
+        shell: bash
+        run: |
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          sdkmanager --install emulator platform-tools "$SYSTEM_IMAGE"
+          echo no | avdmanager create avd --name "$AVD_NAME" --package "$SYSTEM_IMAGE"
+          emulator -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim \
+            -no-snapshot -gpu swiftshader_indirect > emulator.log 2>&1 &
+          emulator_pid=$!
+          trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
+
+          timeout 180 adb -e wait-for-device
+          for attempt in {1..90}; do
+            kill -0 "$emulator_pid"
+            if [[ "$(adb -e shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]; then
+              adb -e shell getprop ro.build.fingerprint
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'Android failed to complete boot' >&2
+          exit 1
+
+      - name: Upload emulator log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-log
+          path: emulator.log
+          if-no-files-found: ignore
