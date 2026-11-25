@@ -15,8 +15,21 @@ def adb(*args):
 
 
 def snapshot():
-    adb("shell", "uiautomator", "dump", "/sdcard/launcher-test.xml")
-    return ET.fromstring(adb("exec-out", "cat", "/sdcard/launcher-test.xml"))
+    path = "/data/local/tmp/launcher-test.xml"
+    for _ in range(5):
+        adb("shell", "rm", "-f", path)
+        result = subprocess.run(
+            ["adb", "-e", "shell", "uiautomator", "dump", path],
+            capture_output=True, timeout=20, check=False)
+        if result.returncode == 0 and b"dumped to" in result.stdout:
+            tree = ET.fromstring(adb("exec-out", "cat", path))
+            Path("mini-last-ui.xml").write_text(ET.tostring(tree, encoding="unicode"))
+            return tree
+        time.sleep(1)
+    screenshot("ui-unavailable")
+    print(adb("shell", "dumpsys", "activity", "activities").decode()[-4000:], flush=True)
+    print(adb("logcat", "-d", "-s", "AndroidRuntime").decode()[-4000:], flush=True)
+    raise AssertionError("No accessible Android UI after five attempts")
 
 
 def node(text):
@@ -60,15 +73,22 @@ def screenshot(name):
     Path(f"mini-{name}.png").write_bytes(adb("exec-out", "screencap", "-p"))
 
 
-adb("shell", "input", "keyevent", "82")
+adb("shell", "settings", "put", "global", "device_provisioned", "1")
+adb("shell", "settings", "put", "secure", "user_setup_complete", "1")
+adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
+adb("shell", "wm", "dismiss-keyguard")
+adb("shell", "wm", "size", "720x1280")
+adb("shell", "wm", "density", "240")
 adb("install", "mini-launcher/build/LauncherPlusMini.apk")
 adb("install", "mini-launcher/build/test-widget.apk")
 homes = adb("shell", "cmd", "package", "query-activities", "--brief", "-a",
             "android.intent.action.MAIN", "-c", "android.intent.category.HOME").decode()
 assert PACKAGE in homes, homes
 assert any("/" in line and PACKAGE not in line for line in homes.splitlines()), homes
-adb("shell", "cmd", "package", "set-home-activity", COMPONENT)
-adb("shell", "input", "keyevent", "3")
+selected = adb("shell", "cmd", "package", "set-home-activity", COMPONENT).decode()
+assert "Success" in selected, selected
+started = adb("shell", "am", "start", "-W", "-n", COMPONENT).decode()
+assert "Status: ok" in started, started
 node("Alle Apps")
 tap("Ordner")
 node("Neuer Ordner")
