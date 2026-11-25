@@ -61,6 +61,23 @@ def tap(text, long=False):
         adb("shell", "input", "tap", x, y)
 
 
+def choose_widget(text):
+    for _ in range(8):
+        tree = snapshot()
+        if any(item.get("text") == text for item in tree.iter("node")):
+            tap(text)
+            return
+        lists = [item for item in tree.iter("node") if item.get("scrollable") == "true"]
+        if not lists:
+            break
+        left, top, right, bottom = bounds(lists[0])
+        x = str((left + right) // 2)
+        adb("shell", "input", "swipe", x, str(top + (bottom - top) * 4 // 5),
+            x, str(top + (bottom - top) // 4), "450")
+    screenshot("widget-provider-unavailable")
+    raise AssertionError(f"Widget provider missing from the picker: {text!r}")
+
+
 def capture_label(text):
     labels = [item for item in snapshot().iter("node") if item.get("text") == text]
     assert labels, f"No text node for {text!r}"
@@ -138,7 +155,7 @@ adb("shell", "input", "keyevent", "3")
 node("Testordner")
 tap("Widgets")
 node("Widget hinzufügen")
-tap("Launcher Test Widget")
+choose_widget("Launcher Test Widget")
 tap("android:id/button1")
 node("Widget Testinhalt")
 screenshot("widget")
