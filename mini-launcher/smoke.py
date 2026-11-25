@@ -34,11 +34,16 @@ def snapshot():
 
 def node(text):
     for _ in range(4):
-        for item in snapshot().iter("node"):
-            if item.get("text") == text or item.get("content-desc") == text:
+        tree = snapshot()
+        for item in tree.iter("node"):
+            if any(item.get(key, "").casefold() == text.casefold()
+                   for key in ("text", "content-desc", "resource-id")):
                 return item
         time.sleep(0.5)
-    raise AssertionError(f"Missing UI element {text!r}")
+    screenshot("missing-element")
+    visible = [(item.get("text"), item.get("content-desc")) for item in tree.iter("node")
+               if item.get("text") or item.get("content-desc")]
+    raise AssertionError(f"Missing {text!r}. Visible: {visible}")
 
 
 def bounds(item):
@@ -92,8 +97,9 @@ assert "Status: ok" in started, started
 node("Alle Apps")
 tap("Ordner")
 node("Neuer Ordner")
+tap("Ordnername")
 adb("shell", "input", "text", "Testordner")
-tap("Speichern")
+tap("android:id/button1")
 capture_label("Testordner")
 tap("Testordner")
 node("Umbenennen")
@@ -115,18 +121,20 @@ adb("shell", "input", "keyevent", "4")
 tap("Testordner")
 node("Settings")
 tap("Settings")
-assert "com.android.settings" in adb("shell", "dumpsys", "activity", "activities").decode()
+for _ in range(10):
+    resumed = adb("shell", "dumpsys", "activity", "activities").decode()
+    if any("ResumedActivity" in line and "com.android.settings/" in line
+           for line in resumed.splitlines()):
+        break
+    time.sleep(0.5)
+else:
+    raise AssertionError("Settings never reached the foreground")
 adb("shell", "input", "keyevent", "3")
 node("Testordner")
 tap("Widgets")
 node("Widget hinzufügen")
 tap("Launcher Test Widget")
-dialog = snapshot()
-buttons = {item.get("text") for item in dialog.iter("node")}
-if "Add" in buttons:
-    tap("Add")
-elif "Allow" in buttons:
-    tap("Allow")
+tap("android:id/button1")
 node("Widget Testinhalt")
 screenshot("widget")
 adb("shell", "am", "force-stop", PACKAGE)
@@ -135,7 +143,7 @@ node("Testordner")
 node("Widget Testinhalt")
 screenshot("home")
 tap("Launcher Test Widget entfernen")
-tap("Entfernen")
+tap("android:id/button1")
 assert not any(item.get("text") == "Widget Testinhalt" for item in snapshot().iter("node"))
 print("PASS: install, HOME selection and coexistence, drawer swipe, app launch, "
       "folder creation/pinning/persistence, black glyphs, widget binding, display, persistence and removal.")

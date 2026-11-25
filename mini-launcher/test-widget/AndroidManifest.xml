@@ -2,6 +2,12 @@
     package="io.github.graphenelauncherplus.mini.testwidget">
     <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="35" />
     <application android:hasCode="false" android:label="Launcher Test Widget">
+        <activity android:name="android.app.Activity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <receiver android:name="android.appwidget.AppWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
