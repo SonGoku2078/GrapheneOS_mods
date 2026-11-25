@@ -3,18 +3,17 @@ name: Launcher preflight
 on:
   push:
     branches: [graphene-launcher-plus]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  preflight:
+  source-check:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    env:
-      SYSTEM_IMAGE: system-images;android-36;google_apis;x86_64
-      AVD_NAME: launcher-plus-ci
     steps:
       - name: Check out project
         uses: actions/checkout@v4
@@ -28,7 +27,16 @@ jobs:
             https://github.com/GrapheneOS/platform_packages_apps_Launcher3.git upstream
           git -C upstream rev-parse HEAD
           git -C upstream apply --check "$GITHUB_WORKSPACE/black-labels.patch"
+          git -C upstream apply "$GITHUB_WORKSPACE/black-labels.patch"
+          git -C upstream diff --check
 
+  emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SYSTEM_IMAGE: system-images;android-36;google_apis;x86_64
+      AVD_NAME: launcher-plus-ci
+    steps:
       - name: Boot Android emulator
         shell: bash
         run: |
