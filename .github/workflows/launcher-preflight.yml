@@ -23,11 +23,16 @@ jobs:
       - name: Check patch against GrapheneOS Launcher3
         shell: bash
         run: |
-          git clone --depth 1 --branch 17 \
-            https://github.com/GrapheneOS/platform_packages_apps_Launcher3.git upstream
-          git -C upstream rev-parse HEAD
-          git -C upstream apply --check "$GITHUB_WORKSPACE/black-labels.patch"
-          git -C upstream apply "$GITHUB_WORKSPACE/black-labels.patch"
+          revision=0ca6a5b36620dd6a4f83b4162ef006889184e19e
+          git init upstream
+          git -C upstream fetch --depth 1 \
+            https://github.com/GrapheneOS/platform_packages_apps_Launcher3.git "$revision"
+          git -C upstream checkout --detach FETCH_HEAD
+          test "$(git -C upstream rev-parse HEAD)" = "$revision"
+          git -C upstream apply --check --whitespace=error-all \
+            "$GITHUB_WORKSPACE/black-labels.patch" "$GITHUB_WORKSPACE/standalone-soong.patch"
+          git -C upstream apply \
+            "$GITHUB_WORKSPACE/black-labels.patch" "$GITHUB_WORKSPACE/standalone-soong.patch"
           git -C upstream diff --check
 
   emulator:
