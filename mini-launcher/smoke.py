@@ -81,7 +81,13 @@ def choose_widget(text):
 def capture_label(text):
     labels = [item for item in snapshot().iter("node") if item.get("text") == text]
     assert labels, f"No text node for {text!r}"
-    left, top, right, bottom = bounds(labels[0])
+    crop = capture_region(labels[0])
+    black = sum(pixel == (0, 0, 0) for pixel in crop.getdata())
+    assert black >= 3, f"No black glyph pixels found for {text!r}"
+
+
+def capture_region(item):
+    left, top, right, bottom = bounds(item)
     with Image.open(io.BytesIO(adb("exec-out", "screencap", "-p"))) as screenshot_image:
         display_width, display_height = map(int, re.findall(
             r"([0-9]+)x([0-9]+)", adb("shell", "wm", "size").decode())[-1])
@@ -91,9 +97,18 @@ def capture_label(text):
             round(right * screenshot_image.width / display_width),
             round(bottom * screenshot_image.height / display_height),
         )
-        crop = screenshot_image.crop(box).convert("RGB")
-        black = sum(pixel == (0, 0, 0) for pixel in crop.getdata())
-        assert black >= 3, f"No black glyph pixels found for {text!r}"
+        return screenshot_image.crop(box).convert("RGB")
+
+
+def verify_widget():
+    widget = node("Launcher Test Widget")
+    for _ in range(5):
+        crop = capture_region(widget)
+        if sum(pixel == (37, 148, 133) for pixel in crop.getdata()) >= 100:
+            return
+        time.sleep(1)
+    screenshot("widget-render-failed")
+    raise AssertionError("Test widget is bound but its coloured layout did not render")
 
 
 def screenshot(name):
@@ -157,16 +172,17 @@ tap("Widgets")
 node("Widget hinzufügen")
 choose_widget("Launcher Test Widget")
 tap("android:id/button1")
-node("Widget Testinhalt")
+verify_widget()
 screenshot("widget")
 adb("shell", "am", "force-stop", PACKAGE)
 adb("shell", "am", "start", "-n", COMPONENT)
 node("Testordner")
-node("Widget Testinhalt")
+verify_widget()
 screenshot("home")
 tap("Launcher Test Widget entfernen")
 tap("android:id/button1")
-assert not any(item.get("text") == "Widget Testinhalt" for item in snapshot().iter("node"))
+assert not any(item.get("content-desc") == "Launcher Test Widget"
+               for item in snapshot().iter("node"))
 tap("Alle Apps")
 node("Settings")
 adb("shell", "input", "keyevent", "4")
