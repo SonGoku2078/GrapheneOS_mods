@@ -42,10 +42,18 @@ jobs:
         run: |
           sudo chgrp "$(id -gn)" /dev/kvm
           sudo chmod g+rw /dev/kvm
-          sdkmanager --install emulator platform-tools "$SYSTEM_IMAGE"
-          echo no | avdmanager create avd --name "$AVD_NAME" --package "$SYSTEM_IMAGE"
-          emulator -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim \
-            -no-snapshot -gpu swiftshader_indirect > emulator.log 2>&1 &
+          sdk_root="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          tools_dir="$sdk_root/cmdline-tools/latest/bin"
+          if [[ ! -x "$tools_dir/sdkmanager" ]]; then
+            sdkmanager_path=$(find "$sdk_root/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)
+            test -n "$sdkmanager_path"
+            tools_dir="$(dirname "$sdkmanager_path")"
+          fi
+          "$tools_dir/sdkmanager" --sdk_root="$sdk_root" --install emulator platform-tools "$SYSTEM_IMAGE"
+          "$tools_dir/avdmanager" create avd --name "$AVD_NAME" --package "$SYSTEM_IMAGE" <<< no
+          export PATH="$sdk_root/platform-tools:$PATH"
+          "$sdk_root/emulator/emulator" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim \
+            -no-snapshot -gpu swiftshader > emulator.log 2>&1 &
           emulator_pid=$!
           trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
 
