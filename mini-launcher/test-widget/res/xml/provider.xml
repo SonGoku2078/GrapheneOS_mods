@@ -1,0 +1,5 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/fixture"
+    android:minWidth="120dp"
+    android:minHeight="84dp"
+    android:widgetCategory="home_screen" />

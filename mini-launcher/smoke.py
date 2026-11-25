@@ -1,5 +1,6 @@
 """Exercise Launcher Plus Mini through Android's UI on a disposable emulator."""
 import re
+import struct
 import subprocess
 import time
 import xml.etree.ElementTree as ET
@@ -27,9 +28,32 @@ def node(text):
     raise AssertionError(f"Missing UI element {text!r}")
 
 
-def tap(text):
-    left, top, right, bottom = map(int, re.findall(r"\d+", node(text).get("bounds")))
-    adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
+def bounds(item):
+    return tuple(map(int, re.findall(r"\d+", item.get("bounds"))))
+
+
+def tap(text, long=False):
+    left, top, right, bottom = bounds(node(text))
+    x, y = str((left + right) // 2), str((top + bottom) // 2)
+    if long:
+        adb("shell", "input", "swipe", x, y, x, y, "750")
+    else:
+        adb("shell", "input", "tap", x, y)
+
+
+def capture_label(text):
+    labels = [item for item in snapshot().iter("node") if item.get("text") == text]
+    assert labels, f"No text node for {text!r}"
+    left, top, right, bottom = bounds(labels[0])
+    image = adb("exec-out", "screencap")
+    width, height, format_id = struct.unpack_from("<III", image)
+    offset = len(image) - width * height * 4
+    assert format_id == 1 and offset in (12, 16), "Unexpected emulator screenshot format"
+    assert right <= width and bottom <= height
+    black = sum(image[offset + (y * width + x) * 4:
+                      offset + (y * width + x) * 4 + 3] == b"\0\0\0"
+                for y in range(top, bottom) for x in range(left, right))
+    assert black >= 3, f"No black glyph pixels found for {text!r}"
 
 
 def screenshot(name):
@@ -38,31 +62,60 @@ def screenshot(name):
 
 adb("shell", "input", "keyevent", "82")
 adb("install", "mini-launcher/build/LauncherPlusMini.apk")
+adb("install", "mini-launcher/build/test-widget.apk")
 homes = adb("shell", "cmd", "package", "query-activities", "--brief", "-a",
             "android.intent.action.MAIN", "-c", "android.intent.category.HOME").decode()
 assert PACKAGE in homes, homes
 assert any("/" in line and PACKAGE not in line for line in homes.splitlines()), homes
-adb("shell", "am", "start", "-n", COMPONENT)
+adb("shell", "cmd", "package", "set-home-activity", COMPONENT)
+adb("shell", "input", "keyevent", "3")
 node("Alle Apps")
 tap("Ordner")
 node("Neuer Ordner")
 adb("shell", "input", "text", "Testordner")
 tap("Speichern")
+capture_label("Testordner")
 tap("Testordner")
 node("Umbenennen")
 screenshot("folder")
 adb("shell", "input", "keyevent", "4")
-tap("Alle Apps")
+left, top, right, bottom = bounds(snapshot().find("node"))
+x = str((left + right) // 2)
+adb("shell", "input", "swipe", x, str(top + int((bottom - top) * 0.84)),
+    x, str(top + int((bottom - top) * 0.42)), "400")
+node("Start")
 drawer = snapshot()
 assert any(item.get("clickable") == "true" and item.get("content-desc")
            for item in drawer.iter("node")), "Drawer has no app tiles"
+capture_label("Settings")
 screenshot("drawer")
+tap("Settings", long=True)
+tap("Ordner: Testordner")
 adb("shell", "input", "keyevent", "4")
+tap("Testordner")
+node("Settings")
+tap("Settings")
+assert "com.android.settings" in adb("shell", "dumpsys", "activity", "activities").decode()
+adb("shell", "input", "keyevent", "3")
+node("Testordner")
 tap("Widgets")
 node("Widget hinzufügen")
-adb("shell", "input", "keyevent", "4")
+tap("Launcher Test Widget")
+dialog = snapshot()
+buttons = {item.get("text") for item in dialog.iter("node")}
+if "Add" in buttons:
+    tap("Add")
+elif "Allow" in buttons:
+    tap("Allow")
+node("Widget Testinhalt")
+screenshot("widget")
 adb("shell", "am", "force-stop", PACKAGE)
 adb("shell", "am", "start", "-n", COMPONENT)
 node("Testordner")
+node("Widget Testinhalt")
 screenshot("home")
-print("PASS: APK install, two HOME handlers, folder creation/open/persistence, app drawer, widget picker.")
+tap("Launcher Test Widget entfernen")
+tap("Entfernen")
+assert not any(item.get("text") == "Widget Testinhalt" for item in snapshot().iter("node"))
+print("PASS: install, HOME selection and coexistence, drawer swipe, app launch, "
+      "folder creation/pinning/persistence, black glyphs, widget binding, display, persistence and removal.")

@@ -62,6 +62,7 @@ jobs:
                 echo "Unexpected permission in packaged APK" >&2
                 exit 1
               fi
+              bash mini-launcher/test-widget/build.sh
               python3 mini-launcher/smoke.py
               exit 0
             fi
