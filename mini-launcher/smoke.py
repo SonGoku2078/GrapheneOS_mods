@@ -1,10 +1,12 @@
 """Exercise Launcher Plus Mini through Android's UI on a disposable emulator."""
 import re
-import struct
+import io
 import subprocess
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+from PIL import Image
 
 PACKAGE = "io.github.graphenelauncherplus.mini"
 COMPONENT = f"{PACKAGE}/.HomeActivity"
@@ -63,15 +65,18 @@ def capture_label(text):
     labels = [item for item in snapshot().iter("node") if item.get("text") == text]
     assert labels, f"No text node for {text!r}"
     left, top, right, bottom = bounds(labels[0])
-    image = adb("exec-out", "screencap")
-    width, height, format_id = struct.unpack_from("<III", image)
-    offset = len(image) - width * height * 4
-    assert format_id == 1 and offset in (12, 16), "Unexpected emulator screenshot format"
-    assert right <= width and bottom <= height
-    black = sum(image[offset + (y * width + x) * 4:
-                      offset + (y * width + x) * 4 + 3] == b"\0\0\0"
-                for y in range(top, bottom) for x in range(left, right))
-    assert black >= 3, f"No black glyph pixels found for {text!r}"
+    with Image.open(io.BytesIO(adb("exec-out", "screencap", "-p"))) as screenshot_image:
+        display_width, display_height = map(int, re.findall(
+            r"([0-9]+)x([0-9]+)", adb("shell", "wm", "size").decode())[-1])
+        box = (
+            round(left * screenshot_image.width / display_width),
+            round(top * screenshot_image.height / display_height),
+            round(right * screenshot_image.width / display_width),
+            round(bottom * screenshot_image.height / display_height),
+        )
+        crop = screenshot_image.crop(box).convert("RGB")
+        black = sum(pixel == (0, 0, 0) for pixel in crop.getdata())
+        assert black >= 3, f"No black glyph pixels found for {text!r}"
 
 
 def screenshot(name):

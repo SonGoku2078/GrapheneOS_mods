@@ -23,6 +23,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Set up screenshot analysis
+        run: |
+          python3 -m venv "$RUNNER_TEMP/mini-test"
+          "$RUNNER_TEMP/mini-test/bin/pip" install Pillow
       - name: Build, install and test Mini
         shell: bash
         run: |
@@ -63,7 +67,7 @@ jobs:
                 exit 1
               fi
               bash mini-launcher/test-widget/build.sh
-              python3 mini-launcher/smoke.py
+              "$RUNNER_TEMP/mini-test/bin/python" mini-launcher/smoke.py
               exit 0
             fi
             sleep 2
@@ -83,5 +87,6 @@ jobs:
             mini-launcher/build/LauncherPlusMini.apk
             mini-*.png
             mini-permissions.txt
+            mini-last-ui.xml
             emulator.log
           if-no-files-found: warn
