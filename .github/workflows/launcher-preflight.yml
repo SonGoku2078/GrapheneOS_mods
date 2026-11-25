@@ -62,10 +62,13 @@ jobs:
           emulator_pid=$!
           trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
 
-          timeout 180 adb -e wait-for-device
-          for attempt in {1..90}; do
-            kill -0 "$emulator_pid"
-            if [[ "$(adb -e shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]; then
+          adb start-server
+          for attempt in {1..150}; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo 'Android emulator exited before completing boot' >&2
+              exit 1
+            fi
+            if [[ "$(timeout 5 adb -e shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then
               adb -e shell getprop ro.build.fingerprint
               exit 0
             fi
@@ -73,6 +76,14 @@ jobs:
           done
           echo 'Android failed to complete boot' >&2
           exit 1
+
+      - name: Show emulator diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          if [[ -f emulator.log ]]; then
+            cat emulator.log
+          fi
 
       - name: Upload emulator log
         if: always()
