@@ -33,3 +33,27 @@ Der direkte Git-Zugriff scheiterte an der Namensauflösung. Der GitHub-Connector
 Es wurde keine APK gebaut und kein Smartphone verwendet.
 
 Nach der Freigabe der grossen Downloads wurden die Abrufwege erneut getestet. GitHub, GitHub Codeload, Google Android SDK, Gradle und Maven Central scheiterten in der Shell bei der Namensauflösung. Ein konfigurierter HTTP-Proxy, ein Cloud-Pakethelfer und eine vorhandene SDK-Installation wurden nicht gefunden. Die Downloadfreigabe liegt vor. Für den nächsten Build-Schritt braucht es ausgehenden Netzwerkzugriff aus der Build-Umgebung oder einen vollständigen lokalen Checkout samt Offline-Toolchain und Abhängigkeiten.
+
+## GitHub Actions und Soong-Ziel
+
+Die Arbeit läuft im [Entwurfs-PR](https://github.com/SonGoku2078/GrapheneOS_mods/pull/1). Der erste [Actions-Lauf](https://github.com/SonGoku2078/GrapheneOS_mods/actions/runs/45630751878) hat den Schwarz-Patch auf einem vollständigen Launcher3-Checkout angewandt und den Diff geprüft. Der Emulator-Job scheiterte, weil `sdkmanager` auf dem Runner nicht im Suchpfad lag. Die korrigierte Konfiguration leitet die Pfade aus der SDK-Installation ab. Im [zweiten Lauf](https://github.com/SonGoku2078/GrapheneOS_mods/actions/runs/45630946255) wurden die SDK-Pakete installiert. ADB meldete innerhalb von 180 Sekunden keinen Emulator. Im [Lauf mit gepinntem Upstream](https://github.com/SonGoku2078/GrapheneOS_mods/actions/runs/45631224512) bestanden beide Patches die Quellprüfung. Das [Startprotokoll](https://github.com/SonGoku2078/GrapheneOS_mods/actions/runs/45631954924/job/139267232146) wies anschliessend ein fehlendes AVD im Suchverzeichnis des Emulators nach. Der Workflow setzt dafür ein gemeinsames Verzeichnis für beide Android-Werkzeuge. Der [abschliessende Vorabcheck](https://github.com/SonGoku2078/GrapheneOS_mods/actions/runs/45632282265) bestand beide Quellprüfungen und meldete einen vollständig gestarteten Android-36-Emulator. Dabei wurde keine Launcher-APK installiert.
+
+`standalone-soong.patch` ergänzt das separate Ziel `GrapheneLauncherPlus` auf dem Launcher3-Stand `0ca6a5b36620dd6a4f83b4162ef006889184e19e`. Es verwendet den Quellpfad ohne Quickstep, eigene Manifestdateien und dieselbe App-ID im generierten `BuildConfig` und in den Provider-Autoritäten. Bei der lokalen Prüfung liess sich der Patch auf die zum Commit gehörigen Dateien anwenden und rückgängig machen. Die beiden neuen Manifestdateien wurden als XML geparst und ihre Provider-Autoritäten und bekannten privilegierten Berechtigungen geprüft. Kompilierung und der zusammengeführte APK-Manifeststand stehen aus.
+
+Der Soong-Build setzt einen kompatiblen GrapheneOS-17-Plattformcheckout voraus. Die offizielle Anleitung nennt bereits für den leichtgewichtigen Sync mindestens 90 GiB Speicher. GitHubs Standard-Runner bietet 14 GB SSD-Speicher. Der Standard-Runner dient den Quellprüfungen und dem Emulator. Für die Soong-Kompilierung fehlt ein Runner mit Plattformcheckout und ausreichend Speicher. [GrapheneOS-Build-Anleitung](https://grapheneos.org/build) · [GitHub-Runner-Spezifikationen](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+
+Zum Kompilieren in einem separaten, bereits synchronisierten GrapheneOS-17-Baum sind der gepinnte Launcher3-Stand und die beiden Patches erforderlich. Die folgende Befehlsfolge ist vorbereitet und wurde hier noch nicht ausgeführt.
+
+```bash
+git -C packages/apps/Launcher3 apply --check \
+  /pfad/zu/GrapheneOS_mods/black-labels.patch \
+  /pfad/zu/GrapheneOS_mods/standalone-soong.patch
+git -C packages/apps/Launcher3 apply \
+  /pfad/zu/GrapheneOS_mods/black-labels.patch \
+  /pfad/zu/GrapheneOS_mods/standalone-soong.patch
+source build/envsetup.sh
+lunch sdk_phone64_x86_64-cur-userdebug
+m GrapheneLauncherPlus
+```
+
+Vor der APK-Freigabe sind eine eigene Signatur, eine Prüfung des binären Manifests und der Abhängigkeiten sowie die Installation als reguläre App im Emulator erforderlich.
