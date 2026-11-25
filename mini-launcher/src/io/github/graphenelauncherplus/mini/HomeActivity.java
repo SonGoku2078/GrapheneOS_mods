@@ -13,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -26,6 +27,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.window.OnBackInvokedDispatcher;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -65,6 +67,10 @@ public final class HomeActivity extends Activity {
         if (state != null) {
             pendingWidget = state.getInt("widget", -1);
         }
+        if (Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
+        }
         render();
     }
 
@@ -89,6 +95,10 @@ public final class HomeActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        handleBack();
+    }
+
+    private void handleBack() {
         if (drawer || folderIndex >= 0) {
             showHome();
         }

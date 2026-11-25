@@ -11,6 +11,7 @@
     </queries>
     <application android:label="Launcher Plus Mini"
         android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name=".HomeActivity" android:exported="true"
             android:launchMode="singleTask">
