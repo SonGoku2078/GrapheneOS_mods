@@ -1,0 +1,98 @@
+name: Launcher preflight
+
+on:
+  push:
+    branches: [graphene-launcher-plus]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check patch against GrapheneOS Launcher3
+        shell: bash
+        run: |
+          revision=0ca6a5b36620dd6a4f83b4162ef006889184e19e
+          git init upstream
+          git -C upstream fetch --depth 1 \
+            https://github.com/GrapheneOS/platform_packages_apps_Launcher3.git "$revision"
+          git -C upstream checkout --detach FETCH_HEAD
+          test "$(git -C upstream rev-parse HEAD)" = "$revision"
+          git -C upstream apply --check --whitespace=error-all \
+            "$GITHUB_WORKSPACE/black-labels.patch" "$GITHUB_WORKSPACE/standalone-soong.patch"
+          git -C upstream apply \
+            "$GITHUB_WORKSPACE/black-labels.patch" "$GITHUB_WORKSPACE/standalone-soong.patch"
+          git -C upstream diff --check
+
+  emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SYSTEM_IMAGE: system-images;android-36;google_apis;x86_64
+      AVD_NAME: launcher-plus-ci
+    steps:
+      - name: Boot Android emulator
+        shell: bash
+        run: |
+          sudo chgrp "$(id -gn)" /dev/kvm
+          sudo chmod g+rw /dev/kvm
+          sdk_root="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          tools_dir="$sdk_root/cmdline-tools/latest/bin"
+          if [[ ! -x "$tools_dir/sdkmanager" ]]; then
+            sdkmanager_path=$(find "$sdk_root/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)
+            test -n "$sdkmanager_path"
+            tools_dir="$(dirname "$sdkmanager_path")"
+          fi
+          "$tools_dir/sdkmanager" --sdk_root="$sdk_root" --install emulator platform-tools "$SYSTEM_IMAGE"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/launcher-android"
+          export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          "$tools_dir/avdmanager" create avd --name "$AVD_NAME" --package "$SYSTEM_IMAGE" <<< no
+          "$sdk_root/emulator/emulator" -list-avds | grep -Fx "$AVD_NAME"
+          export PATH="$sdk_root/platform-tools:$PATH"
+          "$sdk_root/emulator/emulator" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim \
+            -no-snapshot -gpu swiftshader > emulator.log 2>&1 &
+          emulator_pid=$!
+          trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
+
+          adb start-server
+          for attempt in {1..150}; do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo 'Android emulator exited before completing boot' >&2
+              exit 1
+            fi
+            if [[ "$(timeout 5 adb -e shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then
+              adb -e shell getprop ro.build.fingerprint
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'Android failed to complete boot' >&2
+          exit 1
+
+      - name: Show emulator diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          if [[ -f emulator.log ]]; then
+            cat emulator.log
+          fi
+
+      - name: Upload emulator log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-log
+          path: emulator.log
+          if-no-files-found: ignore

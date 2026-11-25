@@ -1,0 +1,56 @@
+diff --git a/src/com/android/launcher3/BubbleTextView.java b/src/com/android/launcher3/BubbleTextView.java
+index b544a23..ae7e9b3 100644
+--- a/src/com/android/launcher3/BubbleTextView.java
++++ b/src/com/android/launcher3/BubbleTextView.java
+@@ -422,6 +422,9 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
+         setEllipsize(TruncateAt.END);
+         setAccessibilityDelegate(mActivity.getAccessibilityDelegate());
+ 
++        if (usesBlackLabel()) {
++            setTextColor(Color.BLACK);
++        }
+         setContainerTextVisibility(mDisplay != DISPLAY_TASKBAR);
+     }
+ 
+@@ -1145,7 +1148,7 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
+ 
+     @Override
+     public void setTextColor(int color) {
+-        mTextColor = color;
++        mTextColor = usesBlackLabel() ? Color.BLACK : color;
+         mTextColorStateList = null;
+         super.setTextColor(getModifiedColor());
+     }
+@@ -1188,8 +1191,20 @@ public class BubbleTextView extends TextView implements ItemInfoUpdateReceiver,
+         setText(spannable);
+     }
+ 
++    private boolean usesBlackLabel() {
++        return mActivity != null && (mDisplay == DISPLAY_WORKSPACE
++                || mDisplay == DISPLAY_FOLDER || mDisplay == DISPLAY_ALL_APPS
++                || mDisplay == DISPLAY_PREDICTION_ROW || mDisplay == DISPLAY_SEARCH_RESULT
++                || mDisplay == DISPLAY_SEARCH_RESULT_SMALL
++                || mDisplay == DISPLAY_SEARCH_RESULT_APP_ROW);
++    }
++
+     @Override
+     public void setTextColor(ColorStateList colors) {
++        if (usesBlackLabel()) {
++            setTextColor(Color.BLACK);
++            return;
++        }
+         if (shouldDrawAppContrastTile()) {
+             mTextColor = PillColorProvider.getInstance(
+                     getContext()).getAppTitleTextPaint().getColor();
+diff --git a/src/com/android/launcher3/folder/Folder.java b/src/com/android/launcher3/folder/Folder.java
+index 9d6c625..644a9aa 100644
+--- a/src/com/android/launcher3/folder/Folder.java
++++ b/src/com/android/launcher3/folder/Folder.java
+@@ -339,6 +339,7 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
+         mFooter = findViewById(R.id.folder_footer);
+         mFooterHeight = dp.getFolderProfile().getFooterHeightPx();
+         mFolderName = findViewById(R.id.folder_name);
++        mFolderName.setTextColor(android.graphics.Color.BLACK);
+         mFolderName.setTypeface(Typeface.create("google-sans-flex", Typeface.NORMAL));
+         mFolderName.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+                 dp.getFolderProfile().getLabelTextSizePx());
